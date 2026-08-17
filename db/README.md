@@ -27,3 +27,11 @@ pnpm run db:lint
 
 Tables in the public schema are protected with RLS and explicit grants. Do not
 add public tables without ownership policies and role grants.
+
+## Phase 2 Shape
+
+Reference data is normalized into public read-only tables for `countries`,
+`leagues`, `clubs`, `players`, `external_ids`, `game_versions`, and
+`player_game_snapshots`. Career data remains user-owned under `career_saves`
+with season, player, snapshot, transfer, match, lineup, event, trophy, setting,
+and audit tables linked by composite `(save_id, user_id)` ownership keys.

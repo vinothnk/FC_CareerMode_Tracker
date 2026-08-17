@@ -40,6 +40,43 @@ test("creates Supabase migration workflow with RLS and explicit grants", async (
   assert.doesNotMatch(migration, /service_role/i);
 });
 
+test("adds normalized phase 2 career and reference schema", async () => {
+  const migration = await readFile(
+    new URL("../supabase/migrations/20260817113422_phase_2_database_architecture.sql", import.meta.url),
+    "utf8",
+  );
+
+  for (const table of [
+    "countries",
+    "leagues",
+    "clubs",
+    "players",
+    "external_ids",
+    "game_versions",
+    "player_game_snapshots",
+    "save_seasons",
+    "save_players",
+    "player_snapshots",
+    "transfers",
+    "matches",
+    "match_lineups",
+    "match_events",
+    "trophies",
+    "save_settings",
+    "career_audit_events",
+    "reference_audit_events",
+  ]) {
+    assert.match(migration, new RegExp(`create table public\\.${table}`));
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
+  }
+
+  assert.match(migration, /Reference data is publicly readable/);
+  assert.match(migration, /foreign key \(save_id, user_id\) references public\.career_saves\(id, user_id\)/);
+  assert.match(migration, /grant select on public\.players to anon, authenticated/);
+  assert.match(migration, /grant select, insert, update, delete on public\.matches to authenticated/);
+  assert.match(migration, /create table public\.career_audit_events/);
+});
+
 test("keeps app foundation files in place", async () => {
   const [layout, page, healthRoute, serverClient, browserClient, designTokens] =
     await Promise.all([
