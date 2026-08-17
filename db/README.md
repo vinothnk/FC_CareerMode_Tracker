@@ -35,3 +35,12 @@ Reference data is normalized into public read-only tables for `countries`,
 `player_game_snapshots`. Career data remains user-owned under `career_saves`
 with season, player, snapshot, transfer, match, lineup, event, trophy, setting,
 and audit tables linked by composite `(save_id, user_id)` ownership keys.
+
+## Phase 4 SoFIFA Pipeline
+
+SoFIFA ingestion runs through standalone scripts in `scripts/sofifa`, not the
+web app. Raw and normalized staging files live under `data/sofifa/staging`, with
+future generated refresh output ignored by git. The private `ingestion` schema
+tracks import runs, raw staged entities, and refresh diffs. Loaded records keep
+SoFIFA identifiers in `public.external_ids` and preserve roster updates as
+separate `public.game_versions` plus `public.player_game_snapshots` rows.

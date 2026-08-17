@@ -40,3 +40,8 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# generated SoFIFA staging output
+/data/sofifa/staging/*
+!/data/sofifa/staging/sample/
+!/data/sofifa/staging/sample/raw.json

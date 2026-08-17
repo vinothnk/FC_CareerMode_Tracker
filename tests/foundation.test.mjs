@@ -107,6 +107,28 @@ test("adds phase 3 auth routes and career save visibility controls", async () =>
   assert.match(saveActions, /\.eq\("user_id", user\.id\)/);
 });
 
+test("adds phase 4 SoFIFA reference data pipeline", async () => {
+  const [migration, packageJson, pipelineReadme] = await Promise.all([
+    readFile(
+      new URL("../supabase/migrations/20260817123000_phase_4_sofifa_reference_pipeline.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/sofifa/README.md", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(migration, /create schema if not exists ingestion/);
+  assert.match(migration, /create table if not exists ingestion\.sofifa_import_runs/);
+  assert.match(migration, /create table if not exists ingestion\.sofifa_raw_players/);
+  assert.match(migration, /create table if not exists ingestion\.sofifa_refresh_diffs/);
+  assert.match(migration, /add column if not exists source_run_id uuid/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /grant usage on schema ingestion to service_role/);
+  assert.match(packageJson, /"sofifa:load": "node scripts\/sofifa\/load\.mjs"/);
+  assert.match(pipelineReadme, /MVP Fields/);
+  assert.match(pipelineReadme, /Versioning/);
+});
+
 test("keeps app foundation files in place", async () => {
   const [layout, page, healthRoute, serverClient, browserClient, designTokens] =
     await Promise.all([

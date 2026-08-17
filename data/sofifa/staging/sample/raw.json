@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "provider": "sofifa",
+    "gameCode": "fc26",
+    "title": "FC26",
+    "platform": "web",
+    "versionLabel": "sample",
+    "rosterDate": "2026-08-17",
+    "sourceUrl": "fixture",
+    "capturedAt": "2026-08-17T00:00:00.000Z"
+  },
+  "raw": {
+    "nations": [
+      {
+        "sofifaId": "nation:england",
+        "name": "England",
+        "iso2": "EN",
+        "iso3": "ENG"
+      }
+    ],
+    "leagues": [
+      {
+        "sofifaId": "61",
+        "name": "Premier League",
+        "shortName": "Premier League",
+        "countrySofifaId": "nation:england",
+        "level": 1,
+        "gender": "men"
+      }
+    ],
+    "clubs": [
+      {
+        "sofifaId": "1",
+        "name": "Arsenal",
+        "shortName": "Arsenal",
+        "countrySofifaId": "nation:england",
+        "leagueSofifaId": "61",
+        "city": "London",
+        "foundedYear": 1886,
+        "stadiumName": "Emirates Stadium"
+      }
+    ],
+    "players": [
+      {
+        "sofifaId": "239085",
+        "fullName": "Martin Odegaard",
+        "knownAs": "M. Odegaard",
+        "age": 27,
+        "dateOfBirth": "1998-12-17",
+        "nationalitySofifaId": "nation:england",
+        "clubSofifaId": "1",
+        "leagueSofifaId": "61",
+        "primaryPosition": "CAM",
+        "positions": ["CAM", "CM"],
+        "overall": 89,
+        "potential": 89,
+        "preferredFoot": "left",
+        "heightCm": 178,
+        "valueAmount": 105000000,
+        "wageAmount": 190000,
+        "currency": "EUR",
+        "attributes": {
+          "vision": 91,
+          "shortPassing": 90
+        }
+      }
+    ]
+  }
+}
