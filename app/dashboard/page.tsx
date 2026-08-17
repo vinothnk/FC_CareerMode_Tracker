@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { logout } from "@/app/auth/actions";
 import { createCareerSave, updateCareerSaveVisibility } from "@/app/dashboard/actions/save-actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -15,8 +16,27 @@ type CareerSave = {
   updated_at: string;
 };
 
-export default async function DashboardPage() {
+type GameVersion = {
+  id: string;
+  title: string;
+  version_label: string;
+  roster_date: string | null;
+  is_default: boolean;
+};
+
+type ReferenceClub = {
+  id: string;
+  name: string;
+  city: string | null;
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
+  const params = await searchParams;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -31,8 +51,32 @@ export default async function DashboardPage() {
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
 
+  const [{ data: versions, error: versionsError }, { data: clubs, error: clubsError }] =
+    await Promise.all([
+      supabase
+        .from("game_versions")
+        .select("id,title,version_label,roster_date,is_default")
+        .eq("game_code", "fc26")
+        .eq("platform", "console")
+        .order("is_default", { ascending: false })
+        .order("roster_date", { ascending: false, nullsFirst: false }),
+      supabase
+        .from("clubs")
+        .select("id,name,city")
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+    ]);
+
   if (error) {
     throw new Error(error.message);
+  }
+
+  if (versionsError) {
+    throw new Error(versionsError.message);
+  }
+
+  if (clubsError) {
+    throw new Error(clubsError.message);
   }
 
   return (
@@ -56,19 +100,96 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[360px_1fr] lg:px-8">
+      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[440px_1fr] lg:px-8">
         <form action={createCareerSave} className="h-fit rounded border border-[#d9dfd5] bg-white p-5">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#b34835]">
-            New Save
+            New Career
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">Add a career save</h1>
-          <div className="mt-5 grid gap-4">
+          <h1 className="mt-2 text-2xl font-semibold">Create your next save</h1>
+          {params?.error ? (
+            <p className="mt-3 rounded bg-[#fff2dc] px-3 py-2 text-sm text-[#8a4b16]">
+              {decodeURIComponent(params.error)}
+            </p>
+          ) : null}
+          <div className="mt-5 grid gap-5">
             <TextField label="Save name" name="name" placeholder="Port Vale rebuild" />
-            <TextField label="Club" name="club" placeholder="Port Vale" />
             <TextField label="Manager" name="manager_name" placeholder="A. Mensah" />
             <TextField label="Season" name="season_label" placeholder="2026/27" />
-            <TextField label="Difficulty" name="difficulty" placeholder="World Class" required={false} />
-            <TextField label="Transfer budget" name="transfer_budget" placeholder="4800000" type="number" required={false} />
+            <label className="grid gap-2 text-sm font-medium">
+              FC database
+              <select className="rounded border border-[#cbd4c7] px-3 py-2" name="game_version_id" defaultValue={(versions as GameVersion[] | null)?.[0]?.id ?? ""}>
+                {(versions as GameVersion[] | null)?.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.title} · {version.version_label}
+                    {version.roster_date ? ` · ${version.roster_date}` : ""}
+                    {version.is_default ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Reference club
+              <select className="rounded border border-[#cbd4c7] px-3 py-2" name="reference_club_id" defaultValue="">
+                <option value="">No reference club, create manually</option>
+                {(clubs as ReferenceClub[] | null)?.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                    {club.city ? ` · ${club.city}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <TextField label="Manual club name" name="club" placeholder="Only required without a reference club" required={false} />
+            <label className="flex items-center gap-3 rounded bg-[#eef2ec] px-3 py-2 text-sm font-medium">
+              <input className="size-4" name="import_reference_squad" type="checkbox" defaultChecked />
+              Import the selected club squad into Season 1
+            </label>
+
+            <div className="grid gap-3 border-t border-[#d9dfd5] pt-5">
+              <h2 className="font-semibold">Save settings</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField label="Difficulty" name="difficulty" placeholder="World Class" required={false} />
+                <TextField label="Currency" name="currency" placeholder="USD" required={false} />
+                <TextField label="Transfer budget" name="transfer_budget" placeholder="4800000" type="number" required={false} />
+                <TextField label="Wage budget" name="wage_budget" placeholder="125000" type="number" required={false} />
+              </div>
+              <TextField label="League objective" name="league_finish" placeholder="Mid-table" required={false} />
+              <TextField label="Cup objective" name="domestic_cup" placeholder="Round of 16" required={false} />
+              <TextField label="Youth objective" name="youth_development" placeholder="Promote two academy players" required={false} />
+              <label className="grid gap-2 text-sm font-medium">
+                House rules
+                <textarea
+                  className="min-h-20 rounded border border-[#cbd4c7] px-3 py-2"
+                  name="house_rules"
+                  placeholder="No financial takeover. Scout only in home nation for Season 1."
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 border-t border-[#d9dfd5] pt-5">
+              <div>
+                <h2 className="font-semibold">Manual squad starter</h2>
+                <p className="mt-1 text-sm text-[#526056]">
+                  Used when no reference club is selected.
+                </p>
+              </div>
+              {[0, 1, 2, 3, 4].map((index) => (
+                <div key={index} className="grid gap-2 rounded bg-[#f5f7f4] p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_72px_72px]">
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.display_name`} placeholder="Player name" />
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.primary_position`} placeholder="Pos" />
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.overall`} placeholder="OVR" type="number" min="1" max="99" />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-4">
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.potential`} placeholder="POT" type="number" min="1" max="99" />
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.age`} placeholder="Age" type="number" min="15" max="60" />
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.squad_number`} placeholder="#" type="number" min="1" max="99" />
+                    <input className="rounded border border-[#cbd4c7] px-3 py-2" name={`manual_players.${index}.wage_amount`} placeholder="Wage" type="number" min="0" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <label className="grid gap-2 text-sm font-medium">
               Visibility
               <select className="rounded border border-[#cbd4c7] px-3 py-2" name="visibility" defaultValue="private">
@@ -77,7 +198,7 @@ export default async function DashboardPage() {
               </select>
             </label>
             <button className="rounded bg-[#145c42] px-4 py-2 font-semibold text-white" type="submit">
-              Create save
+              Create career
             </button>
           </div>
         </form>
@@ -100,7 +221,7 @@ export default async function DashboardPage() {
               (saves as CareerSave[]).map((save) => <SaveCard key={save.id} save={save} />)
             ) : (
               <div className="rounded border border-[#d9dfd5] bg-white p-6 text-[#526056]">
-                No saves yet. Add your first career on the left.
+                No saves yet. Create your first career on the left.
               </div>
             )}
           </div>
@@ -151,6 +272,9 @@ function SaveCard({ save }: { save: CareerSave }) {
           <p className="mt-2 text-[#526056]">
             {save.club} · {save.season_label} · {save.manager_name}
           </p>
+          <Link className="mt-3 inline-flex rounded bg-[#145c42] px-3 py-2 text-sm font-semibold text-white" href={`/dashboard/${save.id}`}>
+            Open dashboard
+          </Link>
         </div>
         <form action={updateCareerSaveVisibility} className="flex items-center gap-2">
           <input type="hidden" name="save_id" value={save.id} />

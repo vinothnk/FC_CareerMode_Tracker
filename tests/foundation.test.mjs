@@ -129,6 +129,32 @@ test("adds phase 4 SoFIFA reference data pipeline", async () => {
   assert.match(pipelineReadme, /Versioning/);
 });
 
+test("adds phase 5 career save creation flow", async () => {
+  const [migration, dashboardPage, careerPage, saveActions] = await Promise.all([
+    readFile(
+      new URL("../supabase/migrations/20260817123554_phase_5_career_save_creation.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/dashboard/[saveId]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/dashboard/actions/save-actions.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(migration, /create or replace function public\.create_career_save_with_initial_data/);
+  assert.match(migration, /insert into public\.save_seasons/);
+  assert.match(migration, /insert into public\.save_settings/);
+  assert.match(migration, /from public\.player_game_snapshots pgs/);
+  assert.match(migration, /jsonb_to_recordset\(p_manual_players\)/);
+  assert.match(migration, /grant execute on function public\.create_career_save_with_initial_data/);
+  assert.match(dashboardPage, /FC database/);
+  assert.match(dashboardPage, /Reference club/);
+  assert.match(dashboardPage, /Manual squad starter/);
+  assert.match(saveActions, /\.rpc\("create_career_save_with_initial_data"/);
+  assert.match(saveActions, /redirect\(saveId \? `\/dashboard\/\$\{saveId\}` : "\/dashboard"\)/);
+  assert.match(careerPage, /Initial Squad/);
+  assert.match(careerPage, /Season 1/);
+});
+
 test("keeps app foundation files in place", async () => {
   const [layout, page, healthRoute, serverClient, browserClient, designTokens] =
     await Promise.all([

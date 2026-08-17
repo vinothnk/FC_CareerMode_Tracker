@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const saveSnapshot = {
   manager: "A. Mensah",
   club: "Port Vale",
@@ -97,7 +99,7 @@ export default function Home() {
                 <a href="#scope">Scope</a>
                 <a href="#data">Data</a>
                 <a href="#backlog">Backlog</a>
-                <a className="font-semibold text-[#145c42]" href="/login">Log in</a>
+                <Link className="font-semibold text-[#145c42]" href="/login">Log in</Link>
               </div>
             </nav>
 
@@ -114,12 +116,12 @@ export default function Home() {
                 database or copying another career-mode product.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <a className="rounded bg-[#145c42] px-4 py-2 font-semibold text-white" href="/register">
+                <Link className="rounded bg-[#145c42] px-4 py-2 font-semibold text-white" href="/register">
                   Create account
-                </a>
-                <a className="rounded border border-[#cbd4c7] px-4 py-2 font-semibold" href="/dashboard">
+                </Link>
+                <Link className="rounded border border-[#cbd4c7] px-4 py-2 font-semibold" href="/dashboard">
                   Open app
-                </a>
+                </Link>
               </div>
             </div>
 
