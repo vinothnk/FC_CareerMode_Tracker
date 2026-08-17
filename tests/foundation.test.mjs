@@ -156,6 +156,36 @@ test("adds phase 5 career save creation flow", async () => {
   assert.match(careerPage, /Season 1/);
 });
 
+test("adds phase 6 squad management pages and player editing", async () => {
+  const [migration, sqliteDb, squadPage, playerPage, squadActions, squadClient, careerPage] =
+    await Promise.all([
+      readFile(
+        new URL("../supabase/migrations/20260817133051_phase_6_squad_management.sql", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../lib/sqlite/db.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/[saveId]/squad/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/[saveId]/squad/[playerId]/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/[saveId]/squad/actions.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/[saveId]/squad/SquadManagementClient.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/[saveId]/page.tsx", import.meta.url), "utf8"),
+    ]);
+
+  assert.match(migration, /add column if not exists role text/);
+  assert.match(migration, /first_team', 'reserve', 'youth_academy', 'loaned', 'sold', 'released/);
+  assert.match(sqliteDb, /createSavePlayerForUser/);
+  assert.match(sqliteDb, /bulkUpsertSavePlayersForUser/);
+  assert.match(sqliteDb, /listSquadPlayers/);
+  assert.match(squadPage, /SquadManagementClient/);
+  assert.match(playerPage, /Snapshot history/);
+  assert.match(squadActions, /createPlayerAction/);
+  assert.match(squadActions, /bulkImportPlayersAction/);
+  assert.match(squadClient, /Search/);
+  assert.match(squadClient, /Bulk import or edit/);
+  assert.match(squadClient, /Positional depth/);
+  assert.match(careerPage, /Manage squad/);
+});
+
 test("keeps app foundation files in place", async () => {
   const [layout, page, healthRoute, sqliteDb, designTokens] =
     await Promise.all([

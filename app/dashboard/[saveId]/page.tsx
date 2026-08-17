@@ -59,6 +59,9 @@ export default async function CareerDashboardPage({
           <span className="rounded bg-[#eef2ec] px-3 py-2 text-sm font-semibold uppercase text-[#526056]">
             {save.visibility}
           </span>
+          <Link className="rounded bg-[#145c42] px-4 py-2 text-sm font-semibold text-white" href={`/dashboard/${save.id}/squad`}>
+            Manage squad
+          </Link>
         </div>
       </header>
 
@@ -119,7 +122,11 @@ export default async function CareerDashboardPage({
                       return (
                         <tr key={player.id} className="border-t border-[#d9dfd5]">
                           <td className="px-4 py-3 text-[#526056]">{player.squad_number ?? "-"}</td>
-                          <td className="px-4 py-3 font-semibold">{player.display_name}</td>
+                          <td className="px-4 py-3 font-semibold">
+                            <Link className="text-[#145c42] underline" href={`/dashboard/${save.id}/squad/${player.id}`}>
+                              {player.display_name}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3">{player.primary_position}</td>
                           <td className="px-4 py-3">{snapshot?.overall ?? "-"}</td>
                           <td className="px-4 py-3">{snapshot?.potential ?? "-"}</td>

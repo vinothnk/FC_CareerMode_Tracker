@@ -55,6 +55,8 @@ function parseManualPlayers(formData: FormData) {
         value_amount: parseOptionalNumber(formString(formData, `manual_players.${index}.value_amount`)),
         wage_amount: parseOptionalNumber(formString(formData, `manual_players.${index}.wage_amount`)),
         squad_number: parseOptionalNumber(formString(formData, `manual_players.${index}.squad_number`)),
+        role: null,
+        status: "first_team" as const,
         notes: formString(formData, `manual_players.${index}.notes`) || null,
       };
     })

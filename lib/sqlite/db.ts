@@ -51,8 +51,12 @@ export type ManualPlayerInput = {
   value_amount: number | null;
   wage_amount: number | null;
   squad_number: number | null;
+  role: string | null;
+  status: SquadStatus;
   notes: string | null;
 };
+
+export type SquadStatus = "first_team" | "reserve" | "youth_academy" | "loaned" | "sold" | "released";
 
 export type CreateCareerSaveInput = {
   userId: string;
@@ -89,11 +93,14 @@ export type SavePlayer = {
   display_name: string;
   primary_position: string;
   squad_number: number | null;
-  status: string;
+  role: string | null;
+  status: SquadStatus;
 };
 
 export type PlayerSnapshot = {
+  id?: string;
   save_player_id: string;
+  snapshot_date?: string;
   overall: number;
   potential: number | null;
   age: number | null;
@@ -125,6 +132,35 @@ type SaveSeasonRow = Omit<SaveSeason, "board_expectations"> & {
 type SaveSettingRow = {
   setting_key: string;
   setting_value: string;
+};
+
+export type SquadPlayerRow = SavePlayer & {
+  overall: number | null;
+  potential: number | null;
+  age: number | null;
+  value_amount: number | null;
+  wage_amount: number | null;
+  notes: string | null;
+  snapshot_date: string | null;
+};
+
+export type PlayerDetail = SquadPlayerRow & {
+  save_id: string;
+  user_id: string;
+};
+
+export type PlayerFormInput = {
+  displayName: string;
+  primaryPosition: string;
+  role: string | null;
+  status: SquadStatus;
+  overall: number;
+  potential: number | null;
+  age: number | null;
+  valueAmount: number | null;
+  wageAmount: number | null;
+  squadNumber: number | null;
+  notes: string | null;
 };
 
 let db: DatabaseSync | null = null;
@@ -234,7 +270,8 @@ function initializeSchema(database: DatabaseSync) {
       display_name text not null,
       primary_position text not null,
       squad_number integer,
-      status text not null default 'active',
+      role text,
+      status text not null default 'first_team',
       created_at text not null default (datetime('now')),
       updated_at text not null default (datetime('now'))
     );
@@ -270,6 +307,16 @@ function initializeSchema(database: DatabaseSync) {
     create index if not exists save_players_save_id_idx on save_players(save_id);
     create index if not exists player_snapshots_save_id_idx on player_snapshots(save_id);
   `);
+
+  const savePlayerColumns = database
+    .prepare("pragma table_info(save_players)")
+    .all() as Array<{ name: string }>;
+
+  if (!savePlayerColumns.some((column) => column.name === "role")) {
+    database.exec("alter table save_players add column role text");
+  }
+
+  database.prepare("update save_players set status = 'first_team' where status = 'active'").run();
 }
 
 function seedReferenceData(database: DatabaseSync) {
@@ -533,9 +580,18 @@ function getReferencePlayers(clubId: string) {
 function insertSavePlayer(database: DatabaseSync, userId: string, saveId: string, player: ManualPlayerInput) {
   const playerId = randomUUID();
   database.prepare(`
-    insert into save_players (id, save_id, user_id, display_name, primary_position, squad_number)
-    values (?, ?, ?, ?, ?, ?)
-  `).run(playerId, saveId, userId, player.display_name, player.primary_position, player.squad_number);
+    insert into save_players (id, save_id, user_id, display_name, primary_position, squad_number, role, status)
+    values (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    playerId,
+    saveId,
+    userId,
+    player.display_name,
+    player.primary_position,
+    player.squad_number,
+    player.role ?? null,
+    normalizeSquadStatus(player.status),
+  );
 
   database.prepare(`
     insert into player_snapshots (
@@ -599,20 +655,22 @@ export function listSaveSeasons(userId: string, saveId: string) {
 }
 
 export function listSavePlayers(userId: string, saveId: string) {
-  return getDb()
+  const rows = getDb()
     .prepare(`
-      select id, display_name, primary_position, squad_number, status
+      select id, display_name, primary_position, squad_number, role, status
       from save_players
       where save_id = ? and user_id = ?
       order by squad_number asc nulls last, display_name asc
     `)
     .all(saveId, userId) as SavePlayer[];
+
+  return rows.map((row) => ({ ...row, status: normalizeSquadStatus(row.status) }));
 }
 
 export function listLatestPlayerSnapshots(userId: string, saveId: string) {
   return getDb()
     .prepare(`
-      select ps.save_player_id, ps.overall, ps.potential, ps.age, ps.value_amount, ps.wage_amount, ps.notes
+      select ps.id, ps.save_player_id, ps.snapshot_date, ps.overall, ps.potential, ps.age, ps.value_amount, ps.wage_amount, ps.notes
       from player_snapshots ps
       join (
         select save_player_id, max(snapshot_date) as snapshot_date
@@ -625,6 +683,271 @@ export function listLatestPlayerSnapshots(userId: string, saveId: string) {
       where ps.save_id = ? and ps.user_id = ?
     `)
     .all(saveId, userId, saveId, userId) as PlayerSnapshot[];
+}
+
+export function listSquadPlayers(userId: string, saveId: string) {
+  const rows = getDb()
+    .prepare(`
+      select
+        sp.id,
+        sp.display_name,
+        sp.primary_position,
+        sp.squad_number,
+        sp.role,
+        sp.status,
+        ps.snapshot_date,
+        ps.overall,
+        ps.potential,
+        ps.age,
+        ps.value_amount,
+        ps.wage_amount,
+        ps.notes
+      from save_players sp
+      left join (
+        select ranked.*
+        from (
+          select
+            ps.*,
+            row_number() over (
+              partition by ps.save_player_id
+              order by ps.snapshot_date desc, ps.created_at desc
+            ) as rn
+          from player_snapshots ps
+          where ps.save_id = ? and ps.user_id = ?
+        ) ranked
+        where ranked.rn = 1
+      ) ps on ps.save_player_id = sp.id
+      where sp.save_id = ? and sp.user_id = ?
+      order by sp.squad_number asc nulls last, sp.display_name asc
+    `)
+    .all(saveId, userId, saveId, userId) as SquadPlayerRow[];
+
+  return rows.map((row) => ({ ...row, status: normalizeSquadStatus(row.status) }));
+}
+
+export function getSavePlayerForUser(userId: string, saveId: string, playerId: string) {
+  const row = getDb()
+    .prepare(`
+      select
+        sp.id,
+        sp.save_id,
+        sp.user_id,
+        sp.display_name,
+        sp.primary_position,
+        sp.squad_number,
+        sp.role,
+        sp.status,
+        ps.snapshot_date,
+        ps.overall,
+        ps.potential,
+        ps.age,
+        ps.value_amount,
+        ps.wage_amount,
+        ps.notes
+      from save_players sp
+      left join (
+        select ranked.*
+        from (
+          select
+            ps.*,
+            row_number() over (
+              partition by ps.save_player_id
+              order by ps.snapshot_date desc, ps.created_at desc
+            ) as rn
+          from player_snapshots ps
+          where ps.save_id = ? and ps.user_id = ?
+        ) ranked
+        where ranked.rn = 1
+      ) ps on ps.save_player_id = sp.id
+      where sp.id = ? and sp.save_id = ? and sp.user_id = ?
+    `)
+    .get(saveId, userId, playerId, saveId, userId) as PlayerDetail | undefined;
+
+  return row ? { ...row, status: normalizeSquadStatus(row.status) } : undefined;
+}
+
+export function listPlayerSnapshotHistory(userId: string, saveId: string, playerId: string) {
+  return getDb()
+    .prepare(`
+      select id, save_player_id, snapshot_date, overall, potential, age, value_amount, wage_amount, notes
+      from player_snapshots
+      where save_player_id = ? and save_id = ? and user_id = ?
+      order by snapshot_date desc, created_at desc
+      limit 12
+    `)
+    .all(playerId, saveId, userId) as PlayerSnapshot[];
+}
+
+export function createSavePlayerForUser(userId: string, saveId: string, input: PlayerFormInput) {
+  assertSaveOwnership(userId, saveId);
+  insertSavePlayer(getDb(), userId, saveId, {
+    display_name: input.displayName,
+    primary_position: input.primaryPosition,
+    overall: input.overall,
+    potential: input.potential,
+    age: input.age,
+    value_amount: input.valueAmount,
+    wage_amount: input.wageAmount,
+    squad_number: input.squadNumber,
+    role: input.role,
+    status: input.status,
+    notes: input.notes,
+  });
+  touchSave(saveId, userId);
+}
+
+export function updateSavePlayerForUser(userId: string, saveId: string, playerId: string, input: PlayerFormInput) {
+  assertSaveOwnership(userId, saveId);
+  const database = getDb();
+  const currentPlayer = database
+    .prepare("select id from save_players where id = ? and save_id = ? and user_id = ?")
+    .get(playerId, saveId, userId);
+
+  if (!currentPlayer) {
+    throw new Error("Player not found.");
+  }
+
+  database.exec("begin");
+  try {
+    database.prepare(`
+      update save_players
+      set display_name = ?, primary_position = ?, squad_number = ?, role = ?, status = ?, updated_at = ?
+      where id = ? and save_id = ? and user_id = ?
+    `).run(
+      input.displayName,
+      input.primaryPosition,
+      input.squadNumber,
+      input.role,
+      normalizeSquadStatus(input.status),
+      new Date().toISOString(),
+      playerId,
+      saveId,
+      userId,
+    );
+
+    database.prepare(`
+      insert into player_snapshots (
+        id, save_player_id, save_id, user_id, snapshot_date, overall, potential, age, value_amount, wage_amount, notes
+      ) values (?, ?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      playerId,
+      saveId,
+      userId,
+      input.overall,
+      input.potential,
+      input.age,
+      input.valueAmount,
+      input.wageAmount,
+      input.notes,
+    );
+
+    touchSave(saveId, userId);
+    database.exec("commit");
+  } catch (error) {
+    database.exec("rollback");
+    throw error;
+  }
+}
+
+export function bulkUpsertSavePlayersForUser(userId: string, saveId: string, players: PlayerFormInput[]) {
+  assertSaveOwnership(userId, saveId);
+  const database = getDb();
+
+  database.exec("begin");
+  try {
+    for (const player of players) {
+      const existing = database
+        .prepare("select id from save_players where save_id = ? and user_id = ? and lower(display_name) = lower(?)")
+        .get(saveId, userId, player.displayName) as { id: string } | undefined;
+
+      if (existing) {
+        database.prepare(`
+          update save_players
+          set display_name = ?, primary_position = ?, squad_number = ?, role = ?, status = ?, updated_at = ?
+          where id = ? and save_id = ? and user_id = ?
+        `).run(
+          player.displayName,
+          player.primaryPosition,
+          player.squadNumber,
+          player.role,
+          normalizeSquadStatus(player.status),
+          new Date().toISOString(),
+          existing.id,
+          saveId,
+          userId,
+        );
+
+        database.prepare(`
+          insert into player_snapshots (
+            id, save_player_id, save_id, user_id, snapshot_date, overall, potential, age, value_amount, wage_amount, notes
+          ) values (?, ?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?)
+        `).run(
+          randomUUID(),
+          existing.id,
+          saveId,
+          userId,
+          player.overall,
+          player.potential,
+          player.age,
+          player.valueAmount,
+          player.wageAmount,
+          player.notes,
+        );
+      } else {
+        insertSavePlayer(database, userId, saveId, {
+          display_name: player.displayName,
+          primary_position: player.primaryPosition,
+          overall: player.overall,
+          potential: player.potential,
+          age: player.age,
+          value_amount: player.valueAmount,
+          wage_amount: player.wageAmount,
+          squad_number: player.squadNumber,
+          role: player.role,
+          status: player.status,
+          notes: player.notes,
+        });
+      }
+    }
+
+    touchSave(saveId, userId);
+    database.exec("commit");
+  } catch (error) {
+    database.exec("rollback");
+    throw error;
+  }
+}
+
+function assertSaveOwnership(userId: string, saveId: string) {
+  const save = getDb()
+    .prepare("select id from career_saves where id = ? and user_id = ?")
+    .get(saveId, userId);
+
+  if (!save) {
+    throw new Error("Career save not found.");
+  }
+}
+
+function touchSave(saveId: string, userId: string) {
+  getDb()
+    .prepare("update career_saves set updated_at = ? where id = ? and user_id = ?")
+    .run(new Date().toISOString(), saveId, userId);
+}
+
+export function normalizeSquadStatus(status: string | null | undefined): SquadStatus {
+  switch (status) {
+    case "reserve":
+    case "youth_academy":
+    case "loaned":
+    case "sold":
+    case "released":
+      return status;
+    case "active":
+    case "first_team":
+    default:
+      return "first_team";
+  }
 }
 
 export function listSaveSettings(userId: string, saveId: string) {
