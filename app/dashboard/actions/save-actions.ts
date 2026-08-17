@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/sqlite/auth";
+import {
+  createCareerSaveWithInitialData,
+  updateCareerSaveVisibilityForUser,
+} from "@/lib/sqlite/db";
 
 function formString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -58,10 +62,7 @@ function parseManualPlayers(formData: FormData) {
 }
 
 export async function createCareerSave(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
@@ -78,44 +79,43 @@ export async function createCareerSave(formData: FormData) {
     redirect("/dashboard?error=missing-save-fields");
   }
 
-  const { data, error } = await supabase.rpc("create_career_save_with_initial_data", {
-    p_name: name,
-    p_club_name: club,
-    p_manager_name: managerName,
-    p_season_label: seasonLabel,
-    p_platform: "console",
-    p_difficulty: formString(formData, "difficulty") || null,
-    p_currency: formString(formData, "currency") || "USD",
-    p_transfer_budget: parseBudget(formString(formData, "transfer_budget")),
-    p_wage_budget: parseBudget(formString(formData, "wage_budget")),
-    p_visibility: visibility,
-    p_game_version_id: nullableUuid(formString(formData, "game_version_id")),
-    p_reference_club_id: referenceClubId,
-    p_house_rules: formString(formData, "house_rules"),
-    p_board_expectations: {
+  let saveId: string;
+
+  try {
+    saveId = createCareerSaveWithInitialData({
+      userId: user.id,
+      name,
+      club,
+      managerName,
+      seasonLabel,
+      platform: "console",
+      difficulty: formString(formData, "difficulty") || null,
+      currency: formString(formData, "currency") || "USD",
+      transferBudget: parseBudget(formString(formData, "transfer_budget")),
+      wageBudget: parseBudget(formString(formData, "wage_budget")),
+      visibility,
+      gameVersionId: nullableUuid(formString(formData, "game_version_id")),
+      referenceClubId,
+      houseRules: formString(formData, "house_rules"),
+      boardExpectations: {
       league_finish: formString(formData, "league_finish"),
       domestic_cup: formString(formData, "domestic_cup"),
       youth_development: formString(formData, "youth_development"),
-    },
-    p_import_reference_squad: referenceClubId ? formData.get("import_reference_squad") === "on" : false,
-    p_manual_players: parseManualPlayers(formData),
-  });
-
-  if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
+      },
+      importReferenceSquad: referenceClubId ? formData.get("import_reference_squad") === "on" : false,
+      manualPlayers: parseManualPlayers(formData),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to create save.";
+    redirect(`/dashboard?error=${encodeURIComponent(message)}`);
   }
 
-  const saveId = data?.[0]?.save_id;
-
   revalidatePath("/dashboard");
-  redirect(saveId ? `/dashboard/${saveId}` : "/dashboard");
+  redirect(`/dashboard/${saveId}`);
 }
 
 export async function updateCareerSaveVisibility(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
@@ -128,15 +128,7 @@ export async function updateCareerSaveVisibility(formData: FormData) {
     redirect("/dashboard");
   }
 
-  const { error } = await supabase
-    .from("career_saves")
-    .update({ visibility })
-    .eq("id", saveId)
-    .eq("user_id", user.id);
-
-  if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
-  }
+  updateCareerSaveVisibilityForUser(user.id, saveId, visibility);
 
   revalidatePath("/dashboard");
   redirect("/dashboard");

@@ -1,52 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-type Save = {
-  id: string;
-  name: string;
-  club: string;
-  manager_name: string;
-  season_label: string;
-  difficulty: string | null;
-  currency: string;
-  transfer_budget: number;
-  visibility: "private" | "public";
-  updated_at: string;
-};
-
-type Season = {
-  id: string;
-  season_number: number;
-  label: string;
-  starts_on: string | null;
-  transfer_budget: number;
-  wage_budget: number;
-  board_expectations: Record<string, unknown>;
-};
-
-type SavePlayer = {
-  id: string;
-  display_name: string;
-  primary_position: string;
-  squad_number: number | null;
-  status: string;
-};
-
-type PlayerSnapshot = {
-  save_player_id: string;
-  overall: number;
-  potential: number | null;
-  age: number | null;
-  value_amount: number | null;
-  wage_amount: number | null;
-  notes: string | null;
-};
-
-type SaveSetting = {
-  setting_key: string;
-  setting_value: unknown;
-};
+import { getCurrentUser } from "@/lib/sqlite/auth";
+import {
+  getCareerSaveForUser,
+  listLatestPlayerSnapshots,
+  listSavePlayers,
+  listSaveSeasons,
+  listSaveSettings,
+} from "@/lib/sqlite/db";
 
 export default async function CareerDashboardPage({
   params,
@@ -54,70 +15,31 @@ export default async function CareerDashboardPage({
   params: Promise<{ saveId: string }>;
 }) {
   const { saveId } = await params;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: save, error: saveError } = await supabase
-    .from("career_saves")
-    .select("id,name,club,manager_name,season_label,difficulty,currency,transfer_budget,visibility,updated_at")
-    .eq("id", saveId)
-    .eq("user_id", user.id)
-    .single();
+  const save = getCareerSaveForUser(user.id, saveId);
 
-  if (saveError || !save) {
+  if (!save) {
     notFound();
   }
 
-  const [
-    { data: seasons, error: seasonsError },
-    { data: players, error: playersError },
-    { data: snapshots, error: snapshotsError },
-    { data: settings, error: settingsError },
-  ] = await Promise.all([
-    supabase
-      .from("save_seasons")
-      .select("id,season_number,label,starts_on,transfer_budget,wage_budget,board_expectations")
-      .eq("save_id", saveId)
-      .eq("user_id", user.id)
-      .order("season_number", { ascending: true }),
-    supabase
-      .from("save_players")
-      .select("id,display_name,primary_position,squad_number,status")
-      .eq("save_id", saveId)
-      .eq("user_id", user.id)
-      .order("squad_number", { ascending: true, nullsFirst: false })
-      .order("display_name", { ascending: true }),
-    supabase
-      .from("player_snapshots")
-      .select("save_player_id,overall,potential,age,value_amount,wage_amount,notes")
-      .eq("save_id", saveId)
-      .eq("user_id", user.id)
-      .order("snapshot_date", { ascending: false }),
-    supabase
-      .from("save_settings")
-      .select("setting_key,setting_value")
-      .eq("save_id", saveId)
-      .eq("user_id", user.id),
+  const [seasons, players, snapshots, settings] = await Promise.all([
+    listSaveSeasons(user.id, saveId),
+    listSavePlayers(user.id, saveId),
+    listLatestPlayerSnapshots(user.id, saveId),
+    listSaveSettings(user.id, saveId),
   ]);
 
-  for (const error of [seasonsError, playersError, snapshotsError, settingsError]) {
-    if (error) {
-      throw new Error(error.message);
-    }
-  }
-
-  const activeSeason = (seasons as Season[] | null)?.[0] ?? null;
+  const activeSeason = seasons[0] ?? null;
   const snapshotByPlayer = new Map(
-    (snapshots as PlayerSnapshot[] | null)?.map((snapshot) => [snapshot.save_player_id, snapshot]) ?? [],
+    snapshots.map((snapshot) => [snapshot.save_player_id, snapshot]),
   );
   const settingsByKey = new Map(
-    (settings as SaveSetting[] | null)?.map((setting) => [setting.setting_key, setting.setting_value]) ?? [],
+    settings.map((setting) => [setting.setting_key, setting.setting_value]),
   );
   const creationFlow = settingsByKey.get("creation_flow") as { source?: string; players_created?: number } | undefined;
 
@@ -129,13 +51,13 @@ export default async function CareerDashboardPage({
             <Link className="text-sm font-semibold text-[#145c42]" href="/dashboard">
               Back to saves
             </Link>
-            <h1 className="mt-2 text-3xl font-semibold">{(save as Save).name}</h1>
+            <h1 className="mt-2 text-3xl font-semibold">{save.name}</h1>
             <p className="mt-1 text-[#526056]">
-              {(save as Save).club} · {(save as Save).manager_name} · {(save as Save).season_label}
+              {save.club} · {save.manager_name} · {save.season_label}
             </p>
           </div>
           <span className="rounded bg-[#eef2ec] px-3 py-2 text-sm font-semibold uppercase text-[#526056]">
-            {(save as Save).visibility}
+            {save.visibility}
           </span>
         </div>
       </header>
@@ -155,9 +77,9 @@ export default async function CareerDashboardPage({
               </p>
             </div>
             <dl className="mt-5 grid gap-3 sm:grid-cols-3">
-              <Metric label="Transfer budget" value={money(activeSeason?.transfer_budget ?? (save as Save).transfer_budget, (save as Save).currency)} />
-              <Metric label="Wage budget" value={money(activeSeason?.wage_budget ?? 0, (save as Save).currency)} />
-              <Metric label="Difficulty" value={(save as Save).difficulty ?? "Unspecified"} />
+              <Metric label="Transfer budget" value={money(activeSeason?.transfer_budget ?? save.transfer_budget, save.currency)} />
+              <Metric label="Wage budget" value={money(activeSeason?.wage_budget ?? 0, save.currency)} />
+              <Metric label="Difficulty" value={save.difficulty ?? "Unspecified"} />
             </dl>
           </section>
 
@@ -168,14 +90,14 @@ export default async function CareerDashboardPage({
                   Initial Squad
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold">
-                  {(players as SavePlayer[] | null)?.length ?? 0} players
+                  {players.length} players
                 </h2>
               </div>
               <p className="text-sm text-[#526056]">
                 {creationFlow?.source === "reference" ? "Imported from reference data" : "Manual squad"}
               </p>
             </div>
-            {(players as SavePlayer[] | null)?.length ? (
+            {players.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-[#eef2ec] text-[#526056]">
@@ -191,7 +113,7 @@ export default async function CareerDashboardPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {(players as SavePlayer[]).map((player) => {
+                    {players.map((player) => {
                       const snapshot = snapshotByPlayer.get(player.id);
 
                       return (
@@ -202,8 +124,8 @@ export default async function CareerDashboardPage({
                           <td className="px-4 py-3">{snapshot?.overall ?? "-"}</td>
                           <td className="px-4 py-3">{snapshot?.potential ?? "-"}</td>
                           <td className="px-4 py-3">{snapshot?.age ?? "-"}</td>
-                          <td className="px-4 py-3">{snapshot?.value_amount ? money(snapshot.value_amount, (save as Save).currency) : "-"}</td>
-                          <td className="px-4 py-3">{snapshot?.wage_amount ? money(snapshot.wage_amount, (save as Save).currency) : "-"}</td>
+                          <td className="px-4 py-3">{snapshot?.value_amount ? money(snapshot.value_amount, save.currency) : "-"}</td>
+                          <td className="px-4 py-3">{snapshot?.wage_amount ? money(snapshot.wage_amount, save.currency) : "-"}</td>
                         </tr>
                       );
                     })}

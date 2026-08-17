@@ -2,82 +2,26 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { logout } from "@/app/auth/actions";
 import { createCareerSave, updateCareerSaveVisibility } from "@/app/dashboard/actions/save-actions";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-type CareerSave = {
-  id: string;
-  name: string;
-  club: string;
-  manager_name: string;
-  season_label: string;
-  difficulty: string | null;
-  transfer_budget: number;
-  visibility: "private" | "public";
-  updated_at: string;
-};
-
-type GameVersion = {
-  id: string;
-  title: string;
-  version_label: string;
-  roster_date: string | null;
-  is_default: boolean;
-};
-
-type ReferenceClub = {
-  id: string;
-  name: string;
-  city: string | null;
-};
+import { getCurrentUser } from "@/lib/sqlite/auth";
+import { listCareerSaves, listGameVersions, listReferenceClubs, type CareerSave } from "@/lib/sqlite/db";
 
 export default async function DashboardPage({
   searchParams,
 }: {
   searchParams?: Promise<{ error?: string }>;
 }) {
-  const supabase = await createSupabaseServerClient();
   const params = await searchParams;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: saves, error } = await supabase
-    .from("career_saves")
-    .select("id,name,club,manager_name,season_label,difficulty,transfer_budget,visibility,updated_at")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false });
-
-  const [{ data: versions, error: versionsError }, { data: clubs, error: clubsError }] =
-    await Promise.all([
-      supabase
-        .from("game_versions")
-        .select("id,title,version_label,roster_date,is_default")
-        .eq("game_code", "fc26")
-        .eq("platform", "console")
-        .order("is_default", { ascending: false })
-        .order("roster_date", { ascending: false, nullsFirst: false }),
-      supabase
-        .from("clubs")
-        .select("id,name,city")
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-    ]);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (versionsError) {
-    throw new Error(versionsError.message);
-  }
-
-  if (clubsError) {
-    throw new Error(clubsError.message);
-  }
+  const [saves, versions, clubs] = await Promise.all([
+    listCareerSaves(user.id),
+    listGameVersions(),
+    listReferenceClubs(),
+  ]);
 
   return (
     <main className="min-h-screen bg-[#f5f7f4] text-[#17211b]">
@@ -117,8 +61,8 @@ export default async function DashboardPage({
             <TextField label="Season" name="season_label" placeholder="2026/27" />
             <label className="grid gap-2 text-sm font-medium">
               FC database
-              <select className="rounded border border-[#cbd4c7] px-3 py-2" name="game_version_id" defaultValue={(versions as GameVersion[] | null)?.[0]?.id ?? ""}>
-                {(versions as GameVersion[] | null)?.map((version) => (
+              <select className="rounded border border-[#cbd4c7] px-3 py-2" name="game_version_id" defaultValue={versions[0]?.id ?? ""}>
+                {versions.map((version) => (
                   <option key={version.id} value={version.id}>
                     {version.title} · {version.version_label}
                     {version.roster_date ? ` · ${version.roster_date}` : ""}
@@ -131,7 +75,7 @@ export default async function DashboardPage({
               Reference club
               <select className="rounded border border-[#cbd4c7] px-3 py-2" name="reference_club_id" defaultValue="">
                 <option value="">No reference club, create manually</option>
-                {(clubs as ReferenceClub[] | null)?.map((club) => (
+                {clubs.map((club) => (
                   <option key={club.id} value={club.id}>
                     {club.name}
                     {club.city ? ` · ${club.city}` : ""}
@@ -217,8 +161,8 @@ export default async function DashboardPage({
           </div>
 
           <div className="mt-5 grid gap-4">
-            {(saves as CareerSave[] | null)?.length ? (
-              (saves as CareerSave[]).map((save) => <SaveCard key={save.id} save={save} />)
+            {saves.length ? (
+              saves.map((save) => <SaveCard key={save.id} save={save} />)
             ) : (
               <div className="rounded border border-[#d9dfd5] bg-white p-6 text-[#526056]">
                 No saves yet. Create your first career on the left.

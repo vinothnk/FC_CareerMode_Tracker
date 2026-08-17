@@ -1,8 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  authenticateUser,
+  createSession,
+  createUser,
+  deleteSession,
+  sessionCookieName,
+} from "@/lib/sqlite/db";
+import { sessionCookieOptions } from "@/lib/sqlite/auth";
 
 function formString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -23,12 +31,15 @@ export async function login(formData: FormData) {
     redirect(authErrorUrl("Email and password are required."));
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const user = authenticateUser(email, password);
 
-  if (error) {
-    redirect(authErrorUrl(error.message));
+  if (!user) {
+    redirect(authErrorUrl("Invalid email or password."));
   }
+
+  const { token, expiresAt } = createSession(user.id);
+  const cookieStore = await cookies();
+  cookieStore.set(sessionCookieName, token, sessionCookieOptions(expiresAt));
 
   revalidatePath("/", "layout");
   redirect(next.startsWith("/") ? next : "/dashboard");
@@ -42,20 +53,31 @@ export async function register(formData: FormData) {
     redirect(authErrorUrl("Use an email and a password with at least 8 characters."));
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signUp({ email, password });
+  let user;
 
-  if (error) {
-    redirect(authErrorUrl(error.message));
+  try {
+    user = createUser(email, password);
+  } catch {
+    redirect(authErrorUrl("An account with that email already exists."));
   }
+
+  const { token, expiresAt } = createSession(user.id);
+  const cookieStore = await cookies();
+  cookieStore.set(sessionCookieName, token, sessionCookieOptions(expiresAt));
 
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }
 
 export async function logout() {
-  const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut();
+  const cookieStore = await cookies();
+  const token = cookieStore.get(sessionCookieName)?.value;
+
+  if (token) {
+    deleteSession(token);
+  }
+
+  cookieStore.delete(sessionCookieName);
   revalidatePath("/", "layout");
   redirect("/");
 }

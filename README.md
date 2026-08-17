@@ -11,20 +11,19 @@ Desktop-first web app for solo FC26 console career-mode players who manually tra
 
 See [docs/product-definition.md](docs/product-definition.md) for the Phase 0 scope, data boundaries, legal guardrails, and backlog split.
 
-## Phase 1 Foundation
+## Development Runtime
 
 ```bash
 pnpm install
-cp .env.example .env.local
-pnpm run db:start
-pnpm run db:reset
 pnpm run dev
 pnpm run validate
 ```
 
-The current implementation is a Next.js App Router app with React, TypeScript,
-Tailwind CSS tokens, Supabase client helpers, a first migration, seed data, and
-Vercel deployment metadata.
+The current implementation runs on local SQLite for development. The app creates
+`.data/career-console.sqlite` automatically, stores local users and sessions,
+and keeps private career saves scoped to the signed-in account. Supabase
+migrations and scripts remain in the repo as the future production migration
+target.
 
 ## Useful Commands
 
@@ -32,7 +31,7 @@ Vercel deployment metadata.
 - `pnpm run build`: create a production build.
 - `pnpm run lint`: run ESLint.
 - `pnpm run typecheck`: run TypeScript without emitting files.
-- `pnpm test`: verify the Phase 1 foundation files.
+- `pnpm test`: verify the foundation files and local development runtime.
 - `pnpm run validate`: lint, typecheck, test, and build.
 - `pnpm run db:migration:new <name>`: create a Supabase migration.
 - `pnpm run db:reset`: reset the local Supabase database and run seed data.
@@ -40,9 +39,12 @@ Vercel deployment metadata.
 
 ## Environment
 
-Copy `.env.example` to `.env.local` and fill in the Supabase values from either
-`pnpm run db:status` for local development or the Supabase dashboard for a hosted
-project. Never expose the service role key with a `NEXT_PUBLIC_` prefix.
+SQLite works without environment variables by default. Set `SQLITE_DATABASE_PATH`
+only when you want the development database somewhere other than
+`.data/career-console.sqlite`.
+
+Supabase values in `.env.example` are kept for the later production migration.
+Never expose the service role key with a `NEXT_PUBLIC_` prefix.
 
 ## Deployment
 

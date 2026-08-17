@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("uses Next.js scripts and pinned Supabase dependencies", async () => {
+test("uses Next.js scripts with a local SQLite development runtime", async () => {
   const packageJson = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
@@ -12,7 +12,6 @@ test("uses Next.js scripts and pinned Supabase dependencies", async () => {
   assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
   assert.equal(packageJson.dependencies.next, "16.2.6");
   assert.match(packageJson.dependencies["@supabase/supabase-js"], /^\d+\.\d+\.\d+$/);
-  assert.match(packageJson.dependencies["@supabase/ssr"], /^\d+\.\d+\.\d+$/);
   assert.equal(packageJson.devDependencies.supabase, "2.114.0");
 });
 
@@ -77,13 +76,11 @@ test("adds normalized phase 2 career and reference schema", async () => {
   assert.match(migration, /create table public\.career_audit_events/);
 });
 
-test("adds phase 3 auth routes and career save visibility controls", async () => {
-  const [migration, proxy, loginPage, registerPage, dashboardPage, authActions, saveActions] =
+test("uses SQLite-backed auth routes and career save visibility controls for development", async () => {
+  const [sqliteDb, sqliteAuth, proxy, loginPage, registerPage, dashboardPage, authActions, saveActions] =
     await Promise.all([
-      readFile(
-        new URL("../supabase/migrations/20260817121825_phase_3_auth_user_accounts.sql", import.meta.url),
-        "utf8",
-      ),
+      readFile(new URL("../lib/sqlite/db.ts", import.meta.url), "utf8"),
+      readFile(new URL("../lib/sqlite/auth.ts", import.meta.url), "utf8"),
       readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
       readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/register/page.tsx", import.meta.url), "utf8"),
@@ -92,19 +89,23 @@ test("adds phase 3 auth routes and career save visibility controls", async () =>
       readFile(new URL("../app/dashboard/actions/save-actions.ts", import.meta.url), "utf8"),
     ]);
 
-  assert.match(migration, /add column if not exists visibility text not null default 'private'/);
-  assert.match(migration, /visibility = 'public'\s+or \(select auth\.uid\(\)\) = user_id/);
-  assert.match(proxy, /export async function proxy/);
-  assert.match(proxy, /getClaims/);
+  assert.match(sqliteDb, /from "node:sqlite"/);
+  assert.match(sqliteDb, /create table if not exists users/);
+  assert.match(sqliteDb, /create table if not exists sessions/);
+  assert.match(sqliteDb, /visibility text not null default 'private'/);
+  assert.match(sqliteAuth, /getCurrentUser/);
+  assert.match(proxy, /export function proxy/);
+  assert.match(proxy, /sessionCookieName/);
   assert.match(proxy, /matcher: \["\/dashboard\/:path\*", "\/login", "\/register"\]/);
   assert.match(loginPage, /action=\{login\}/);
   assert.match(registerPage, /action=\{register\}/);
   assert.match(dashboardPage, /createCareerSave/);
   assert.match(dashboardPage, /updateCareerSaveVisibility/);
-  assert.match(authActions, /signInWithPassword/);
-  assert.match(authActions, /signUp/);
-  assert.match(authActions, /signOut/);
-  assert.match(saveActions, /\.eq\("user_id", user\.id\)/);
+  assert.match(authActions, /authenticateUser/);
+  assert.match(authActions, /createUser/);
+  assert.match(authActions, /deleteSession/);
+  assert.match(saveActions, /createCareerSaveWithInitialData/);
+  assert.match(saveActions, /updateCareerSaveVisibilityForUser/);
 });
 
 test("adds phase 4 SoFIFA reference data pipeline", async () => {
@@ -149,27 +150,25 @@ test("adds phase 5 career save creation flow", async () => {
   assert.match(dashboardPage, /FC database/);
   assert.match(dashboardPage, /Reference club/);
   assert.match(dashboardPage, /Manual squad starter/);
-  assert.match(saveActions, /\.rpc\("create_career_save_with_initial_data"/);
-  assert.match(saveActions, /redirect\(saveId \? `\/dashboard\/\$\{saveId\}` : "\/dashboard"\)/);
+  assert.match(saveActions, /createCareerSaveWithInitialData/);
+  assert.match(saveActions, /redirect\(`\/dashboard\/\$\{saveId\}`\)/);
   assert.match(careerPage, /Initial Squad/);
   assert.match(careerPage, /Season 1/);
 });
 
 test("keeps app foundation files in place", async () => {
-  const [layout, page, healthRoute, serverClient, browserClient, designTokens] =
+  const [layout, page, healthRoute, sqliteDb, designTokens] =
     await Promise.all([
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/api/health/route.ts", import.meta.url), "utf8"),
-      readFile(new URL("../lib/supabase/server.ts", import.meta.url), "utf8"),
-      readFile(new URL("../lib/supabase/browser.ts", import.meta.url), "utf8"),
+      readFile(new URL("../lib/sqlite/db.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/design-tokens.ts", import.meta.url), "utf8"),
     ]);
 
   assert.match(layout, /FC26 Career Console/);
   assert.match(page, /Manual career-mode tracking for FC26 console saves\./);
   assert.match(healthRoute, /NextResponse\.json/);
-  assert.match(serverClient, /createServerClient/);
-  assert.match(browserClient, /createBrowserClient/);
+  assert.match(sqliteDb, /getDb/);
   assert.match(designTokens, /appShell/);
 });
