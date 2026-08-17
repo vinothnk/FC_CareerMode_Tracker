@@ -97,6 +97,7 @@ export default function Home() {
                 <a href="#scope">Scope</a>
                 <a href="#data">Data</a>
                 <a href="#backlog">Backlog</a>
+                <a className="font-semibold text-[#145c42]" href="/login">Log in</a>
               </div>
             </nav>
 
@@ -112,6 +113,14 @@ export default function Home() {
                 memory, and season history without pretending to be a live game
                 database or copying another career-mode product.
               </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a className="rounded bg-[#145c42] px-4 py-2 font-semibold text-white" href="/register">
+                  Create account
+                </a>
+                <a className="rounded border border-[#cbd4c7] px-4 py-2 font-semibold" href="/dashboard">
+                  Open app
+                </a>
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">

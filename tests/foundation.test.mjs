@@ -77,6 +77,36 @@ test("adds normalized phase 2 career and reference schema", async () => {
   assert.match(migration, /create table public\.career_audit_events/);
 });
 
+test("adds phase 3 auth routes and career save visibility controls", async () => {
+  const [migration, proxy, loginPage, registerPage, dashboardPage, authActions, saveActions] =
+    await Promise.all([
+      readFile(
+        new URL("../supabase/migrations/20260817121825_phase_3_auth_user_accounts.sql", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/register/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/auth/actions.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/dashboard/actions/save-actions.ts", import.meta.url), "utf8"),
+    ]);
+
+  assert.match(migration, /add column if not exists visibility text not null default 'private'/);
+  assert.match(migration, /visibility = 'public'\s+or \(select auth\.uid\(\)\) = user_id/);
+  assert.match(proxy, /export async function proxy/);
+  assert.match(proxy, /getClaims/);
+  assert.match(proxy, /matcher: \["\/dashboard\/:path\*", "\/login", "\/register"\]/);
+  assert.match(loginPage, /action=\{login\}/);
+  assert.match(registerPage, /action=\{register\}/);
+  assert.match(dashboardPage, /createCareerSave/);
+  assert.match(dashboardPage, /updateCareerSaveVisibility/);
+  assert.match(authActions, /signInWithPassword/);
+  assert.match(authActions, /signUp/);
+  assert.match(authActions, /signOut/);
+  assert.match(saveActions, /\.eq\("user_id", user\.id\)/);
+});
+
 test("keeps app foundation files in place", async () => {
   const [layout, page, healthRoute, serverClient, browserClient, designTokens] =
     await Promise.all([

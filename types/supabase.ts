@@ -21,6 +21,7 @@ export type Database = {
           difficulty: string | null;
           currency: string;
           transfer_budget: number;
+          visibility: "private" | "public";
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -36,11 +37,13 @@ export type Database = {
           difficulty?: string | null;
           currency?: string;
           transfer_budget?: number;
+          visibility?: "private" | "public";
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["career_saves"]["Insert"]>;
+        Relationships: [];
       };
       squad_players: {
         Row: {
@@ -74,6 +77,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["squad_players"]["Insert"]>;
+        Relationships: [];
       };
       fixtures: {
         Row: {
@@ -105,6 +109,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["fixtures"]["Insert"]>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
